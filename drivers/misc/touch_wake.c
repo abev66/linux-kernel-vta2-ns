@@ -31,7 +31,7 @@ static bool timed_out = true;
 
 static unsigned int touchoff_delay = 50000;
 
-static const unsigned int presspower_delay = 100;
+static const unsigned int presspower_delay = 50;
 
 static void touchwake_touchoff(struct work_struct * touchoff_work);
 
