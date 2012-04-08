@@ -61,3 +61,4 @@ obj-$(CONFIG_BLD)		+= bld.o
 obj-$(CONFIG_CPU_DIDLE)		+= deep_idle.o
 obj-$(CONFIG_TOUCH_WAKE)	+= touch_wake.o
 obj-$(CONFIG_CUSTOM_VOLTAGE)	+= custom_voltage.o
+obj-$(CONFIG_FSYNC_CONTROL)	+= fsync_control.o
