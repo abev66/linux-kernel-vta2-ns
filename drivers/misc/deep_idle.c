@@ -10,14 +10,14 @@
 #include <linux/init.h>
 #include <linux/device.h>
 #include <linux/miscdevice.h>
-#include <linux/mutex.h>
+#include <linux/spinlock.h>
 #include <linux/deep_idle.h>
 
 #define DEEPIDLE_VERSION 2
 
 #define NUM_IDLESTATES 3
 
-static DEFINE_MUTEX(lock);
+static DEFINE_SPINLOCK(lock);
 
 static bool deepidle_enabled = true;
 
@@ -64,7 +64,7 @@ static ssize_t show_idle_stats(struct device * dev, struct device_attribute * at
     int i;
     unsigned long long msecs_in_idlestate[NUM_IDLESTATES], avg_in_idlestate[NUM_IDLESTATES];
 
-    mutex_lock(&lock);
+    spin_lock(&lock);
 
     for (i = 0; i < NUM_IDLESTATES; i++) {
 	msecs_in_idlestate[i] = time_in_idlestate[i] + 500;
@@ -77,7 +77,7 @@ static ssize_t show_idle_stats(struct device * dev, struct device_attribute * at
 	}
     }
 
-    mutex_unlock(&lock);
+    spin_unlock(&lock);
 
     return sprintf(buf, "idle state             total (average)\n===================================================\nIDLE                   %llums (%llums)\nDEEP IDLE (TOP=ON)     %llums (%llums)\nDEEP IDLE (TOP=OFF)    %llums (%llums)\n",
 		   msecs_in_idlestate[0], avg_in_idlestate[0], msecs_in_idlestate[1], avg_in_idlestate[1], msecs_in_idlestate[2], avg_in_idlestate[2]);
@@ -104,9 +104,9 @@ static ssize_t reset_idle_stats(struct device * dev, struct device_attribute * a
 	{
 	    if (data == 1)
 		{
-		    mutex_lock(&lock);
+		    spin_lock(&lock);
 		    reset_stats();
-		    mutex_unlock(&lock);
+		    spin_unlock(&lock);
 		}
 	    else 
 		{
@@ -159,7 +159,7 @@ EXPORT_SYMBOL(deepidle_is_enabled);
 
 void report_idle_time(int idle_state, int idle_time)
 {
-    mutex_lock(&lock);
+    spin_lock(&lock);
 
     num_idlecalls[idle_state]++;
     time_in_idlestate[idle_state] += (unsigned long long)idle_time;
@@ -169,7 +169,7 @@ void report_idle_time(int idle_state, int idle_time)
 	    reset_stats();
 	}
 
-    mutex_unlock(&lock);
+    spin_unlock(&lock);
 
     return;
 }
@@ -196,9 +196,9 @@ static int __init deepidle_init(void)
 	    pr_err("Failed to create sysfs group for device (%s)!\n", deepidle_device.name);
 	}
 
-    mutex_lock(&lock);
+    spin_lock(&lock);
     reset_stats();
-    mutex_unlock(&lock);
+    spin_unlock(&lock);
 
     return 0;
 }
