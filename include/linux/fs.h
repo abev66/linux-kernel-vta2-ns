@@ -764,6 +764,9 @@ struct inode {
 		struct rcu_head		i_rcu;
 	};
 	unsigned long		i_ino;
+  
+        unsigned int __i_nlink;
+    
 	atomic_t		i_count;
 	unsigned int		i_nlink;
 	dev_t			i_rdev;
@@ -1363,6 +1366,10 @@ enum {
 #define vfs_check_frozen(sb, level) \
 	wait_event((sb)->s_wait_unfrozen, ((sb)->s_frozen < (level)))
 
+#define get_fs_excl() atomic_inc(&current->fs_excl)
+#define put_fs_excl() atomic_dec(&current->fs_excl)
+#define has_fs_excl() atomic_read(&current->fs_excl)
+
 void sb_end_write(struct super_block *sb, int level);
 void sb_start_write(struct super_block *sb, int level);
 void sb_dup_write(struct super_block *sb, int level);
@@ -1468,6 +1475,9 @@ struct super_block {
 	 * Saved pool identifier for cleancache (-1 means none)
 	 */
 	int cleancache_poolid;
+    
+    /* Number of inodes with nlink == 0 but still referenced */
+    atomic_long_t s_remove_count;
 };
 
 extern struct timespec current_fs_time(struct super_block *sb);
@@ -1720,10 +1730,12 @@ struct super_operations {
 #define __I_SYNC		7
 #define I_SYNC			(1 << __I_SYNC)
 #define I_REFERENCED		(1 << 8)
+#define __I_DIO_WAKEUP          9
 
 #define I_DIRTY (I_DIRTY_SYNC | I_DIRTY_DATASYNC | I_DIRTY_PAGES)
 
 extern void __mark_inode_dirty(struct inode *, int);
+extern void set_nlink(struct inode *inode, unsigned int nlink);
 static inline void mark_inode_dirty(struct inode *inode)
 {
 	__mark_inode_dirty(inode, I_DIRTY);
@@ -1859,19 +1871,6 @@ extern struct dentry *mount_pseudo(struct file_system_type *, char *,
 	const struct super_operations *ops,
 	const struct dentry_operations *dops,
 	unsigned long);
-
-static inline void sb_mark_dirty(struct super_block *sb)
-{
-	sb->s_dirt = 1;
-}
-static inline void sb_mark_clean(struct super_block *sb)
-{
-	sb->s_dirt = 0;
-}
-static inline int sb_is_dirty(struct super_block *sb)
-{
-	return sb->s_dirt;
-}
 
 /* Alas, no aliases. Too much hassle with bringing module.h everywhere */
 #define fops_get(fops) \
@@ -2297,18 +2296,11 @@ extern int should_remove_suid(struct dentry *);
 extern int file_remove_suid(struct file *);
 
 extern void __insert_inode_hash(struct inode *, unsigned long hashval);
+extern void remove_inode_hash(struct inode *);
 static inline void insert_inode_hash(struct inode *inode)
 {
 	__insert_inode_hash(inode, inode->i_ino);
 }
-
-extern void __remove_inode_hash(struct inode *);
-static inline void remove_inode_hash(struct inode *inode)
-{
-	if (!inode_unhashed(inode))
-		__remove_inode_hash(inode);
-}
-
 extern void inode_sb_list_add(struct inode *inode);
 
 #ifdef CONFIG_BLOCK
@@ -2390,6 +2382,7 @@ enum {
 };
 
 void dio_end_io(struct bio *bio, int error);
+void inode_dio_done(struct inode *inode);
 
 ssize_t __blockdev_direct_IO(int rw, struct kiocb *iocb, struct inode *inode,
 	struct block_device *bdev, const struct iovec *iov, loff_t offset,

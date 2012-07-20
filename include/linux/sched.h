@@ -39,6 +39,7 @@
 #define SCHED_BATCH		3
 /* SCHED_ISO: reserved but not implemented yet */
 #define SCHED_IDLE		5
+
 /* Can be ORed in to make sure the process is reverted back to SCHED_NORMAL on fork */
 #define SCHED_RESET_ON_FORK     0x40000000
 
@@ -122,7 +123,7 @@ extern void get_avenrun(unsigned long *loads, unsigned long offset, int shift);
 
 #define FSHIFT		11		/* nr of bits of precision */
 #define FIXED_1		(1<<FSHIFT)	/* 1.0 as fixed-point */
-#define LOAD_FREQ       (4*HZ+61)       /* 4.61 sec intervals */
+#define LOAD_FREQ	(5*HZ+1)	/* 5 sec intervals */
 #define EXP_1		1884		/* 1/exp(5sec/1min) as fixed-point */
 #define EXP_5		2014		/* 1/exp(5sec/5min) */
 #define EXP_15		2037		/* 1/exp(5sec/15min) */
@@ -1091,8 +1092,7 @@ struct sched_class {
 
 	void (*check_preempt_curr) (struct rq *rq, struct task_struct *p, int flags);
 
-	struct task_struct * (*pick_next_task) (struct rq *rq, 
-						struct task_struct *prev);
+    struct task_struct * (*pick_next_task) (struct rq *rq);
 	void (*put_prev_task) (struct rq *rq, struct task_struct *p);
 
 #ifdef CONFIG_SMP
@@ -1185,7 +1185,7 @@ struct sched_entity {
 #endif
 
 #ifdef CONFIG_FAIR_GROUP_SCHED
-	int			depth;
+
 	struct sched_entity	*parent;
 	/* rq on which this entity is (to be) queued: */
 	struct cfs_rq		*cfs_rq;
@@ -1225,6 +1225,7 @@ struct task_struct {
 	atomic_t usage;
 	unsigned int flags;	/* per process flags, defined below */
 	unsigned int ptrace;
+
 
 #ifdef CONFIG_SMP
 	struct task_struct *wake_entry;
@@ -1346,6 +1347,7 @@ struct task_struct {
 	int __user *clear_child_tid;		/* CLONE_CHILD_CLEARTID */
 
 	cputime_t utime, stime, utimescaled, stimescaled;
+
 	cputime_t gtime;
 #ifndef CONFIG_VIRT_CPU_ACCOUNTING
 	cputime_t prev_utime, prev_stime;
@@ -1580,6 +1582,37 @@ struct task_struct {
 	atomic_t ptrace_bp_refcnt;
 #endif
 };
+
+extern int runqueue_is_locked(int cpu);
+static inline void cpu_scaling(int cpu)
+{
+}
+
+static inline void cpu_nonscaling(int cpu)
+{
+}
+#define tsk_seruntime(t)	((t)->se.sum_exec_runtime)
+#define tsk_rttimeout(t)	((t)->rt.timeout)
+
+static inline void tsk_cpus_current(struct task_struct *p)
+{
+	p->rt.nr_cpus_allowed = current->rt.nr_cpus_allowed;
+}
+
+static inline void print_scheduler_version(void)
+{
+	printk(KERN_INFO"CFS CPU scheduler.\n");
+}
+
+static inline bool iso_task(struct task_struct *p)
+{
+	return false;
+}
+
+static inline void remove_cpu(int cpu)
+{
+}
+
 
 /* Future-safe accessor for struct task_struct's cpus_allowed. */
 #define tsk_cpus_allowed(tsk) (&(tsk)->cpus_allowed)
@@ -2582,21 +2615,21 @@ extern void signal_wake_up(struct task_struct *t, int resume_stopped);
  */
 #ifdef CONFIG_SMP
 
-static inline unsigned int task_cpu(const struct task_struct *p)
+static inline int task_cpu(const struct task_struct *p)
 {
 	return task_thread_info(p)->cpu;
 }
 
-extern void set_task_cpu(struct task_struct *p, unsigned int cpu);
+extern void set_task_cpu(struct task_struct *p, int cpu);
 
 #else
 
-static inline unsigned int task_cpu(const struct task_struct *p)
+static inline int task_cpu(const struct task_struct *p)
 {
 	return 0;
 }
 
-static inline void set_task_cpu(struct task_struct *p, unsigned int cpu)
+static inline void set_task_cpu(struct task_struct *p, int cpu)
 {
 }
 
