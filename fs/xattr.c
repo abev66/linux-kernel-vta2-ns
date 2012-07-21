@@ -19,6 +19,7 @@
 #include <linux/fsnotify.h>
 #include <linux/audit.h>
 #include <linux/gfp.h>
+#include <linux/vmalloc.h>
 #include <asm/uaccess.h>
 
 
