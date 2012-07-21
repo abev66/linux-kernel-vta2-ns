@@ -84,7 +84,7 @@ static void update_brightness(struct s5p_lcd *lcd, int level)
 {
 	struct s5p_tft_panel_data *pdata = lcd->data;
 
-	pdata->brightness_set[pdata->pwm_reg_offset] = 0x100 | ((level-10) & 0xff);
+	pdata->brightness_set[pdata->pwm_reg_offset] = 0x100 | (level & 0xff);
 
 	nt35580_panel_send_sequence(lcd, pdata->brightness_set);
 }
