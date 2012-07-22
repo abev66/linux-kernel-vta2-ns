@@ -37,19 +37,19 @@
 #define POLL_TIME_MS		10
 #define CAPTURE_POLL_TIME_MS    1000
 
-/* maximum time for one frame at minimum fps (15fps) in normal mode */
-#define NORMAL_MODE_MAX_ONE_FRAME_DELAY_MS     67
-/* maximum time for one frame at minimum fps (4fps) in night mode */
-#define NIGHT_MODE_MAX_ONE_FRAME_DELAY_MS     250
+/* maximum time for one frame at minimum fps (20fps) in normal mode */
+#define NORMAL_MODE_MAX_ONE_FRAME_DELAY_MS     50
+/* maximum time for one frame at minimum fps (8fps) in night mode */
+#define NIGHT_MODE_MAX_ONE_FRAME_DELAY_MS     125
 
 /* time to move lens to target position before last af mode register write */
 #define LENS_MOVE_TIME_MS       100
 
 /* level at or below which we need to enable flash when in auto mode */
-#define LOW_LIGHT_LEVEL		0x1D
+#define LOW_LIGHT_LEVEL		0x2D
 
 /* level at or below which we need to use low light capture mode */
-#define HIGH_LIGHT_LEVEL	0x80
+#define HIGH_LIGHT_LEVEL	0x8A
 
 #define FIRST_AF_SEARCH_COUNT   80
 #define SECOND_AF_SEARCH_COUNT  80
