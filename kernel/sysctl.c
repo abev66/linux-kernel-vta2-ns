@@ -122,7 +122,11 @@ static int __maybe_unused two = 2;
 static int __maybe_unused three = 3;
 static unsigned long one_ul = 1;
 static int __maybe_unused one_hundred = 100;
-
+#ifdef CONFIG_SCHED_BFS
+extern int rr_interval;
+extern int sched_iso_cpu;
+static int __read_mostly one_thousand = 1000;
+#endif
 #ifdef CONFIG_PRINTK
 static int ten_thousand = 10000;
 #endif
@@ -259,7 +263,7 @@ static struct ctl_table root_table[] = {
 	{ }
 };
 
-#ifdef CONFIG_SCHED_DEBUG
+#if defined(CONFIG_SCHED_DEBUG) && !defined(CONFIG_SCHED_BFS)
 static int min_sched_granularity_ns = 100000;		/* 100 usecs */
 static int max_sched_granularity_ns = NSEC_PER_SEC;	/* 1 second */
 static int min_wakeup_granularity_ns;			/* 0 usecs */
@@ -274,6 +278,115 @@ static int max_extfrag_threshold = 1000;
 #endif
 
 static struct ctl_table kern_table[] = {
+#ifndef CONFIG_SCHED_BFS
+	{
+		.procname	= "sched_child_runs_first",
+		.data		= &sysctl_sched_child_runs_first,
+		.maxlen		= sizeof(unsigned int),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec,
+	},
+#ifdef CONFIG_SCHED_DEBUG
+	{
+		.procname	= "sched_min_granularity_ns",
+		.data		= &sysctl_sched_min_granularity,
+		.maxlen		= sizeof(unsigned int),
+		.mode		= 0644,
+		.proc_handler	= sched_proc_update_handler,
+		.extra1		= &min_sched_granularity_ns,
+		.extra2		= &max_sched_granularity_ns,
+	},
+	{
+		.procname	= "sched_latency_ns",
+		.data		= &sysctl_sched_latency,
+		.maxlen		= sizeof(unsigned int),
+		.mode		= 0644,
+		.proc_handler	= sched_proc_update_handler,
+		.extra1		= &min_sched_granularity_ns,
+		.extra2		= &max_sched_granularity_ns,
+	},
+	{
+		.procname	= "sched_wakeup_granularity_ns",
+		.data		= &sysctl_sched_wakeup_granularity,
+		.maxlen		= sizeof(unsigned int),
+		.mode		= 0644,
+		.proc_handler	= sched_proc_update_handler,
+		.extra1		= &min_wakeup_granularity_ns,
+		.extra2		= &max_wakeup_granularity_ns,
+	},
+	{
+		.procname	= "sched_tunable_scaling",
+		.data		= &sysctl_sched_tunable_scaling,
+		.maxlen		= sizeof(enum sched_tunable_scaling),
+		.mode		= 0644,
+		.proc_handler	= sched_proc_update_handler,
+		.extra1		= &min_sched_tunable_scaling,
+		.extra2		= &max_sched_tunable_scaling,
+	},
+	{
+		.procname	= "sched_migration_cost",
+		.data		= &sysctl_sched_migration_cost,
+		.maxlen		= sizeof(unsigned int),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec,
+	},
+	{
+		.procname	= "sched_nr_migrate",
+		.data		= &sysctl_sched_nr_migrate,
+		.maxlen		= sizeof(unsigned int),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec,
+	},
+	{
+		.procname	= "sched_time_avg",
+		.data		= &sysctl_sched_time_avg,
+		.maxlen		= sizeof(unsigned int),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec,
+	},
+	{
+		.procname	= "sched_shares_window",
+		.data		= &sysctl_sched_shares_window,
+		.maxlen		= sizeof(unsigned int),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec,
+	},
+	{
+		.procname	= "timer_migration",
+		.data		= &sysctl_timer_migration,
+		.maxlen		= sizeof(unsigned int),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec_minmax,
+		.extra1		= &zero,
+		.extra2		= &one,
+	},
+#endif
+	{
+		.procname	= "sched_rt_period_us",
+		.data		= &sysctl_sched_rt_period,
+		.maxlen		= sizeof(unsigned int),
+		.mode		= 0644,
+		.proc_handler	= sched_rt_handler,
+	},
+	{
+		.procname	= "sched_rt_runtime_us",
+		.data		= &sysctl_sched_rt_runtime,
+		.maxlen		= sizeof(int),
+		.mode		= 0644,
+		.proc_handler	= sched_rt_handler,
+	},
+#ifdef CONFIG_SCHED_AUTOGROUP
+	{
+		.procname	= "sched_autogroup_enabled",
+		.data		= &sysctl_sched_autogroup_enabled,
+		.maxlen		= sizeof(unsigned int),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec_minmax,
+		.extra1		= &zero,
+		.extra2		= &one,
+	},
+#endif
+#endif /* !CONFIG_SCHED_BFS */
 #ifdef CONFIG_PROVE_LOCKING
 	{
 		.procname	= "prove_locking",
@@ -723,6 +836,26 @@ static struct ctl_table kern_table[] = {
 		.maxlen		= sizeof(int),
 		.mode		= 0644,
 		.proc_handler	= proc_dointvec,
+	},
+#endif
+#ifdef CONFIG_SCHED_BFS
+	{
+		.procname	= "rr_interval",
+		.data		= &rr_interval,
+		.maxlen		= sizeof (int),
+		.mode		= 0644,
+		.proc_handler	= &proc_dointvec_minmax,
+		.extra1		= &one,
+		.extra2		= &one_thousand,
+	},
+	{
+		.procname	= "iso_cpu",
+		.data		= &sched_iso_cpu,
+		.maxlen		= sizeof (int),
+		.mode		= 0644,
+		.proc_handler	= &proc_dointvec_minmax,
+		.extra1		= &zero,
+		.extra2		= &one_hundred,
 	},
 #endif
 #if defined(CONFIG_S390) && defined(CONFIG_SMP)
