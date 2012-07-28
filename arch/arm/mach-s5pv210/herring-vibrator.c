@@ -23,6 +23,10 @@
 #include <linux/clk.h>
 #include <linux/workqueue.h>
 
+#ifdef CONFIG_CPU_DIDLE
+#include <linux/module.h> 
+#endif
+
 #include <asm/mach-types.h>
 
 #include <../../../drivers/staging/android/timed_output.h>
