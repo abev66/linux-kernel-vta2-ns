@@ -79,7 +79,7 @@ enum s5pv210_dmc_port {
 };
 
 static struct cpufreq_frequency_table s5pv210_freq_table[] = {
-	{L0, 1240*1000},
+	{L0, 1200*1000},
 	{L1, 800*1000},
 	{L2, 400*1000},
 	{L3, 200*1000},
@@ -105,8 +105,8 @@ const unsigned long int_volt_max = 1250000;
 
 static struct s5pv210_dvs_conf dvs_conf[] = {
 	[L0] = {
-		.arm_volt   = 1325000,
-		.int_volt   = 1100000,
+		.arm_volt   = 1300000,
+		.int_volt   = 1125000,
 	},
 	[L1] = {
 		.arm_volt   = 1175000,
@@ -380,7 +380,7 @@ static int s5pv210_target(struct cpufreq_policy *policy,
 		 * 6-2. Wait untile the PLL is locked
 		 */
 		if (index == L0)
-			__raw_writel(APLL_VAL_1240, S5P_APLL_CON);
+			__raw_writel(APLL_VAL_1200, S5P_APLL_CON);
 		else
 			__raw_writel(APLL_VAL_800, S5P_APLL_CON);
 
