@@ -481,7 +481,7 @@ static struct s5pv210_cpufreq_voltage smdkc110_cpufreq_volt[] = {
 	}, {
 		.freq	=  100000,
 		.varm	=  950000,
-		.vint	=  900000,
+		.vint	=  950000,
 	},
 };
 
