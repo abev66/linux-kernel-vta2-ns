@@ -584,12 +584,12 @@ int sync_fence_wait(struct sync_fence *fence, long timeout)
 	list_for_each_entry(pt, &fence->pt_list_head, pt_list)
 		trace_sync_pt(pt);
 
-	if (timeout) {
+	if (timeout > 0) {
 		timeout = msecs_to_jiffies(timeout);
 		err = wait_event_interruptible_timeout(fence->wq,
 						       sync_fence_check(fence),
 						       timeout);
-	} else {
+	} else if (timeout < 0){
 		err = wait_event_interruptible(fence->wq,
 					       sync_fence_check(fence));
 	}
