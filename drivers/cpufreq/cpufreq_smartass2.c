@@ -300,14 +300,12 @@ static void cpufreq_smartass_input_event(struct input_handle *handle, unsigned i
   if (!input_boost_val) return;
 
   if (type == EV_SYN && code == SYN_REPORT){
-  spin_lock_irqsave(&cpumask_lock, flags);
     for_each_online_cpu(i) {
       this_smartass = &per_cpu(smartass_info, i);
       
       if(this_smartass->cur_policy->cur < this_smartass->cur_policy->max && this_smartass->boost != 1)
 	this_smartass->boost = 1;
     }
-  spin_unlock_irqrestore(&cpumask_lock, flags);
   }
 }
 
