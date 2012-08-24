@@ -19,6 +19,14 @@
  *
  * SMP support based on mod by faux123
  *
+ * Boost frequency on touchscreen input based on patched by
+ *   Tero Kristo <tero.kristo@nokia.com>,
+ *   Brian Steuer <bsteuer@codeaurora.org>,
+ *   David Ng <dave@codeaurora.org>,
+ *   Antti P Miettinen <amiettinen@nvidia.com>, and
+ *   Thomas Renninger <trenn@suse.de>
+ *  ported by Lai, Wei-Chen <abev66@gmail.com>
+ *
  * For a general overview of smartassV2 see the relavent part in
  * Documentation/cpu-freq/governors.txt
  *
@@ -34,7 +42,8 @@
 #include <linux/moduleparam.h>
 #include <asm/cputime.h>
 #include <linux/earlysuspend.h>
-
+#include <linux/slab.h>
+#include <linux/input.h>
 
 /******************** Tunable parameters: ********************/
 
@@ -110,6 +119,17 @@ static unsigned int sleep_wakeup_freq;
 #define DEFAULT_SAMPLE_RATE_JIFFIES 2
 static unsigned int sample_rate_jiffies;
 
+/*
+ * Boost to max frequency on touchscreen input.
+ */
+static int input_boost_val = 1;
+
+struct cpufreq_smartass_inputopen {
+    struct input_handle *handle;
+        struct work_struct inputopen_work;
+};
+
+static struct cpufreq_smartass_inputopen inputopen;
 
 /*************** End of tunables ***************/
 
@@ -130,6 +150,7 @@ struct smartass_info_s {
 	int ramp_dir;
 	unsigned int enable;
 	int ideal_speed;
+	unsigned int boost;
 };
 static DEFINE_PER_CPU(struct smartass_info_s, smartass_info);
 
@@ -270,6 +291,90 @@ inline static int target_freq(struct cpufreq_policy *policy, struct smartass_inf
 	return target;
 }
 
+static void cpufreq_smartass_input_event(struct input_handle *handle, unsigned int type, unsigned int code, int value)
+{
+  unsigned int i;
+  unsigned long flags;
+  struct smartass_info_s *this_smartass;
+
+  if (!input_boost_val) return;
+
+  if (type == EV_SYN && code == SYN_REPORT){
+  spin_lock_irqsave(&cpumask_lock, flags);
+    for_each_online_cpu(i) {
+      this_smartass = &per_cpu(smartass_info, i);
+      
+      if(this_smartass->cur_policy->cur < this_smartass->cur_policy->max && this_smartass->boost != 1)
+	this_smartass->boost = 1;
+    }
+  spin_unlock_irqrestore(&cpumask_lock, flags);
+  }
+}
+
+static void cpufreq_smartass_input_open (struct work_struct *w)
+{
+  struct cpufreq_smartass_inputopen *io = container_of(w, struct cpufreq_smartass_inputopen, inputopen_work);
+
+  if(input_open_device(io->handle))
+    input_unregister_handle(io->handle);
+}
+
+static int cpufreq_smartass_input_connect(struct input_handler *handler, 
+                struct input_dev *dev, 
+                const struct input_device_id *id)
+{
+  struct input_handle *handle;
+  int error;
+
+  pr_info("%s: connect to %s\n", __func__, dev->name);
+  handle = kzalloc(sizeof(struct input_handle), GFP_KERNEL);
+  if(!handle)
+    return -ENOMEM;
+
+  handle->dev = dev;
+  handle->handler = handler;
+  handle->name = "cpufreq_smartass";
+
+  error = input_register_handle(handle);
+  if(error) {
+    kfree(handle);
+    return error;
+  } else {
+    inputopen.handle = handle;
+    queue_work(down_wq, &inputopen.inputopen_work);
+    return 0;
+  }
+}
+
+static void cpufreq_smartass_input_disconnect(struct input_handle *handle) 
+{
+  input_close_device(handle);
+  input_unregister_handle(handle);
+  kfree(handle);
+}
+
+static const struct input_device_id cpufreq_smartass_ids[] = {
+  {
+    .flags = INPUT_DEVICE_ID_MATCH_EVBIT | INPUT_DEVICE_ID_MATCH_ABSBIT,
+    .evbit = { BIT_MASK(EV_ABS) },
+    .absbit = { [BIT_WORD(ABS_MT_POSITION_X)] = BIT_MASK(ABS_MT_POSITION_X) | BIT_MASK(ABS_MT_POSITION_Y)},
+  }, /* multi-touch touchscreen */
+  {
+    .flags = INPUT_DEVICE_ID_MATCH_KEYBIT | INPUT_DEVICE_ID_MATCH_ABSBIT,
+    .keybit = { [BIT_WORD(BTN_TOUCH)] = BIT_MASK(BTN_TOUCH) },
+    .absbit = { [BIT_WORD(ABS_X)] = BIT_MASK(ABS_X) | BIT_MASK(ABS_Y) },
+  }, /* touchpad */
+  {},
+};
+
+static struct input_handler cpufreq_smartass_input_handler = {
+  .event        = cpufreq_smartass_input_event,
+  .connect      = cpufreq_smartass_input_connect,
+  .disconnect   = cpufreq_smartass_input_disconnect,
+  .name         = "cpufreq_smartass",
+  .id_table     = cpufreq_smartass_ids,
+};
+
 static void cpufreq_smartass_timer(unsigned long cpu)
 {
 	u64 delta_idle;
@@ -398,6 +503,14 @@ static void cpufreq_smartass_freq_change_time_work(struct work_struct *work)
 			       old_freq,policy->cur);
 			new_freq = old_freq;
 		}
+		else if (this_smartass->boost == 1 && old_freq < policy->max) {
+			// Boost to max freq
+			this_smartass->boost = 0;
+			new_freq = policy->max;
+			relation = CPUFREQ_RELATION_H;
+			dprintk(SMARTASS_DEBUG_ALG, "smartassQ @ %d touch boost: new_freq=%d ideal=%d\n",
+				old_freq, new_freq, this_smartass->ideal_speed);
+		}
 		else if (ramp_dir > 0 && nr_running() > 1) {
 			// ramp up logic:
 			if (old_freq < this_smartass->ideal_speed)
@@ -439,6 +552,7 @@ static void cpufreq_smartass_freq_change_time_work(struct work_struct *work)
 			dprintk(SMARTASS_DEBUG_ALG,"smartassQ @ %d nothing: ramp_dir=%d nr_running=%lu\n",
 				old_freq,ramp_dir,nr_running());
 		}
+		
 
 		// do actual ramp up (returns 0, if frequency change failed):
 		new_freq = target_freq(policy,this_smartass,new_freq,old_freq,relation);
@@ -627,6 +741,25 @@ static ssize_t store_min_cpu_load(struct kobject *kobj, struct attribute *attr, 
 	return count;
 }
 
+static ssize_t show_input_boost(struct kobject *kobj, struct attribute *attr, char *buf)
+{
+  return sprintf(buf, "%u\n", input_boost_val);
+}
+
+static ssize_t store_input_boost(struct kobject *kobj, struct attribute *attr, const char *buf, size_t count)
+{
+  int res;
+  unsigned long input;
+
+  res = strict_strtoul(buf, 0, &input);
+
+  if (res >= 0 && input >= 0 && input <= 1)
+    input_boost_val = input;
+  return count;
+}
+
+define_one_global_rw(input_boost);
+
 #define define_global_rw_attr(_name)		\
 static struct global_attr _name##_attr =	\
 	__ATTR(_name, 0644, show_##_name, store_##_name)
@@ -655,6 +788,7 @@ static struct attribute * smartass_attributes[] = {
 	&ramp_down_step_attr.attr,
 	&max_cpu_load_attr.attr,
 	&min_cpu_load_attr.attr,
+	&input_boost.attr,
 	NULL,
 };
 
@@ -697,6 +831,9 @@ static int cpufreq_governor_smartass(struct cpufreq_policy *new_policy,
 
 			pm_idle_old = pm_idle;
 			pm_idle = cpufreq_idle;
+
+		if(input_register_handler(&cpufreq_smartass_input_handler))
+		   printk(KERN_WARNING "%s: failed to register input handler\n", __func__);
 		}
 
 		if (this_smartass->cur_policy->cur < new_policy->max && !timer_pending(&this_smartass->timer))
@@ -734,6 +871,7 @@ static int cpufreq_governor_smartass(struct cpufreq_policy *new_policy,
 			sysfs_remove_group(cpufreq_global_kobject,
 					   &smartass_attr_group);
 			pm_idle = pm_idle_old;
+            input_unregister_handler(&cpufreq_smartass_input_handler);
 		}
 		break;
 	}
@@ -829,6 +967,7 @@ static int __init cpufreq_smartass_init(void)
 		this_smartass->freq_change_time = 0;
 		this_smartass->freq_change_time_in_idle = 0;
 		this_smartass->cur_cpu_load = 0;
+		this_smartass->boost = 0;
 		// intialize timer:
 		init_timer_deferrable(&this_smartass->timer);
 		this_smartass->timer.function = cpufreq_smartass_timer;
@@ -845,6 +984,7 @@ static int __init cpufreq_smartass_init(void)
 	INIT_WORK(&freq_scale_work, cpufreq_smartass_freq_change_time_work);
 
 	register_early_suspend(&smartass_power_suspend);
+    INIT_WORK(&inputopen.inputopen_work, cpufreq_smartass_input_open);
 
 	return cpufreq_register_governor(&cpufreq_gov_smartass2);
 }
