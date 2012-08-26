@@ -26,6 +26,7 @@
 #include <linux/device.h>
 #include <linux/mutex.h>
 #include <linux/rcupdate.h>
+#include <linux/powerkey_count.h>
 #include "input-compat.h"
 
 MODULE_AUTHOR("Vojtech Pavlik <vojtech@suse.cz>");
@@ -242,7 +243,9 @@ static void input_handle_event(struct input_dev *dev,
 	case EV_KEY:
 		if (is_event_supported(code, dev->keybit, KEY_MAX) &&
 		    !!test_bit(code, dev->key) != value) {
-
+#ifndef CONFIG_POWERKEY_COUNTER
+			if (value == 1 && code == KEY_POWER) powerkey_count();
+#endif
 			if (value != 2) {
 				__change_bit(code, dev->key);
 				if (value)
@@ -253,6 +256,7 @@ static void input_handle_event(struct input_dev *dev,
 
 			disposition = INPUT_PASS_TO_HANDLERS;
 		}
+		
 		break;
 
 	case EV_SW:

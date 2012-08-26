@@ -575,4 +575,10 @@ config PN544
 	help
 	  NXP PN544 Near Field Communication controller support.
 
+config POWERKEY_COUNTER
+    bool "A little counter for counting presses of powerkey"
+    default n
+    help
+      Say Y here to enable Powerkey Counter.
+
 endif # MISC_DEVICES
