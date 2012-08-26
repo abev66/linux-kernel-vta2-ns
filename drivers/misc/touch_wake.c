@@ -33,6 +33,10 @@ static unsigned int touchoff_delay = 50000;
 
 static const unsigned int presspower_delay = 50;
 
+static unsigned long counter = 0;
+
+static unsigned long virtual_keypresses = 0;
+
 static void touchwake_touchoff(struct work_struct * touchoff_work);
 
 static DECLARE_DELAYED_WORK(touchoff_work, touchwake_touchoff);
@@ -165,6 +169,9 @@ static void press_powerkey(struct work_struct * presspower_work)
     msleep(presspower_delay);
 
     mutex_unlock(&lock);
+    
+    virtual_keypresses++;
+    counter--;
 
     return;
 }
@@ -235,15 +242,22 @@ static ssize_t touchwake_version(struct device * dev, struct device_attribute * 
     return sprintf(buf, "%u\n", TOUCHWAKE_VERSION);
 }
 
+static ssize_t touchwake_counter(struct device * dev, struct device_attribute * attr, char * buf)
+{
+    return sprintf(buf, "Physical Powerkey presses: %lu time(s) since boot.\nTouchwakes: %lu time(s) since boot.\n", counter, virtual_keypresses);
+}
+
 static DEVICE_ATTR(enabled, S_IRUGO | S_IWUGO, touchwake_status_read, touchwake_status_write);
 static DEVICE_ATTR(delay, S_IRUGO | S_IWUGO, touchwake_delay_read, touchwake_delay_write);
 static DEVICE_ATTR(version, S_IRUGO , touchwake_version, NULL);
+static DEVICE_ATTR(counter, S_IRUGO , touchwake_counter, NULL);
 
 static struct attribute *touchwake_notification_attributes[] = 
     {
 	&dev_attr_enabled.attr,
 	&dev_attr_delay.attr,
 	&dev_attr_version.attr,
+	&dev_attr_counter.attr,
 	NULL
     };
 
@@ -258,6 +272,14 @@ static struct miscdevice touchwake_device =
 	.name = "touchwake",
     };
 
+void powerkey_count(void)
+{   
+    counter++;
+
+    return;
+}
+EXPORT_SYMBOL(powerkey_count);
+    
 void proximity_detected(void)
 {   
     timed_out = false;
