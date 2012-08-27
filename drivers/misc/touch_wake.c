@@ -17,6 +17,7 @@
 #include <linux/delay.h>
 #include <linux/wakelock.h>
 #include <linux/input.h>
+#include <linux/vmalloc.h>
 
 extern void touchscreen_enable(void);
 extern void touchscreen_disable(void);
@@ -242,15 +243,38 @@ static ssize_t touchwake_version(struct device * dev, struct device_attribute * 
     return sprintf(buf, "%u\n", TOUCHWAKE_VERSION);
 }
 
-static ssize_t touchwake_counter(struct device * dev, struct device_attribute * attr, char * buf)
+static ssize_t touchwake_counter_read(struct device * dev, struct device_attribute * attr, char * buf)
 {
-    return sprintf(buf, "Physical Powerkey presses: %lu time(s) since boot.\nTouchwakes: %lu time(s) since boot.\n", counter, virtual_keypresses);
+    return sprintf(buf, "Physical Powerkey presses: %lu\nTouchwakes: %lu\n", counter, virtual_keypresses);
+}
+
+static ssize_t touchwake_counter_write(struct device * dev, struct device_attribute * attr, const char * buf, size_t size)
+{
+    char *data = vmalloc( sizeof(char) * 4096 );
+        
+    if(sscanf(buf, "%s\n", data)){
+      
+      if(strcmp(data,"reset") == 0) {
+	counter = 0;
+	virtual_keypresses = 0;
+      }
+      else {
+	pr_info("%s: invalid input\n", __FUNCTION__);
+      }
+    }
+    else {
+      pr_info("%s: invalid input\n", __FUNCTION__);
+    }
+    
+    vfree(data);
+    
+    return size;
 }
 
 static DEVICE_ATTR(enabled, S_IRUGO | S_IWUGO, touchwake_status_read, touchwake_status_write);
 static DEVICE_ATTR(delay, S_IRUGO | S_IWUGO, touchwake_delay_read, touchwake_delay_write);
 static DEVICE_ATTR(version, S_IRUGO , touchwake_version, NULL);
-static DEVICE_ATTR(counter, S_IRUGO , touchwake_counter, NULL);
+static DEVICE_ATTR(counter, S_IRUGO | S_IWUGO, touchwake_counter_read, touchwake_counter_write);
 
 static struct attribute *touchwake_notification_attributes[] = 
     {
