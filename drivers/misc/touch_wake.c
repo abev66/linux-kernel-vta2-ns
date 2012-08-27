@@ -252,7 +252,7 @@ static ssize_t touchwake_counter_write(struct device * dev, struct device_attrib
 {
     char *data = vmalloc( sizeof(char) * 4096 );
         
-    if(sscanf(buf, "%s\n", data)){
+    if(sscanf(buf, "%256s\n", data)){
       
       if(strcmp(data,"reset") == 0) {
 	counter = 0;
