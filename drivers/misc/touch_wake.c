@@ -250,8 +250,13 @@ static ssize_t touchwake_counter_read(struct device * dev, struct device_attribu
 
 static ssize_t touchwake_counter_write(struct device * dev, struct device_attribute * attr, const char * buf, size_t size)
 {
-    char *data = vmalloc( sizeof(char) * 4096 );
+    char *data = NULL;
         
+    if( (data = vmalloc( sizeof(char)*512 )) == NULL ) {
+      pr_err("%s: vmalloc error.\n", __FUNCTION__ );
+      return size;
+    }
+    
     if(sscanf(buf, "%256s\n", data)){
       
       if(strcmp(data,"reset") == 0) {
