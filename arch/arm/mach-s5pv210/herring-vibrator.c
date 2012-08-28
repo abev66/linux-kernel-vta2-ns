@@ -23,6 +23,10 @@
 #include <linux/clk.h>
 #include <linux/workqueue.h>
 
+#ifdef CONFIG_TOUCH_WAKE
+#include <linux/touch_wake.h>
+#endif
+
 #ifdef CONFIG_CPU_DIDLE
 #include <linux/module.h> 
 #endif
@@ -84,6 +88,10 @@ static void herring_vibrator_enable(struct timed_output_dev *dev, int value)
 			hrtimer_start(&vibdata.timer,
 				ns_to_ktime((u64)value * NSEC_PER_MSEC),
 				HRTIMER_MODE_REL);
+#ifdef CONFIG_TOUCH_WAKE
+			if(device_is_suspended())
+				enable_touchwake();
+#endif
 		}
 	} else
 		herring_vibrator_off();

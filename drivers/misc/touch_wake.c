@@ -143,6 +143,7 @@ static void touchwake_late_resume(struct early_suspend * h)
     return;
 }
 
+
 static struct early_suspend touchwake_suspend_data = 
     {
 	.level = EARLY_SUSPEND_LEVEL_DISABLE_FB * 10,
@@ -308,6 +309,21 @@ void powerkey_count(void)
     return;
 }
 EXPORT_SYMBOL(powerkey_count);
+
+void enable_touchwake(void){    
+    if(touchwake_enabled && timed_out && touchoff_delay > 0 && device_suspended && touch_disabled) {
+      cancel_delayed_work(&touchoff_work);
+      flush_scheduled_work();
+
+      touchwake_enable_touch();
+      
+      wake_lock(&touchwake_wake_lock);
+      schedule_delayed_work(&touchoff_work, msecs_to_jiffies(touchoff_delay));
+    }
+    
+    return;
+}
+EXPORT_SYMBOL(enable_touchwake);
     
 void proximity_detected(void)
 {   

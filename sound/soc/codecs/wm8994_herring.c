@@ -22,6 +22,10 @@
 #include "wm8994_samsung.h"
 #include "../../../arch/arm/mach-s5pv210/herring.h"
 
+#ifdef CONFIG_TOUCH_WAKE
+#include <linux/touch_wake.h>
+#endif
+
 #ifdef CONFIG_SND_VOODOO
 #include "wm8994_voodoo.h"
 #endif
@@ -2089,6 +2093,11 @@ void wm8994_set_playback_speaker(struct snd_soc_codec *codec)
 	u16 val;
 
 	DEBUG_LOG("");
+
+#ifdef CONFIG_TOUCH_WAKE
+    if(device_is_suspended())
+      enable_touchwake();
+#endif
 
 	/* Disable end point for preventing pop up noise.*/
 	val = wm8994_read(codec, WM8994_POWER_MANAGEMENT_1);

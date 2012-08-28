@@ -15,6 +15,7 @@ void register_touchwake_implementation(struct touchwake_implementation * imp);
 void powerkey_pressed(void);
 void powerkey_released(void);
 void proximity_detected(void);
+void enable_touchwake(void);
 void touch_press(void);
 void powerkey_count(void);
 bool device_is_suspended(void);
