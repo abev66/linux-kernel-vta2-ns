@@ -30,7 +30,7 @@ static bool device_suspended = false;
 
 static bool timed_out = true;
 
-static unsigned int touchoff_delay = 25000;
+static unsigned int touchoff_delay = 10000;
 
 static const unsigned int presspower_delay = 50;
 
