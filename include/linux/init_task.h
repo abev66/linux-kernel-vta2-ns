@@ -124,11 +124,20 @@ INIT_TASK_RCU_BOOST()
 
 extern struct cred init_cred;
 
+extern struct task_group root_task_group;
+
+#ifdef CONFIG_CGROUP_SCHED
+# define INIT_CGROUP_SCHED(tsk)						\
+	.sched_task_group = &root_task_group,
+#else
+# define INIT_CGROUP_SCHED(tsk)
+#endif
+
 #ifdef CONFIG_PERF_EVENTS
-# define INIT_PERF_EVENTS(tsk)					\
-.perf_event_mutex = 						\
-__MUTEX_INITIALIZER(tsk.perf_event_mutex),		\
-.perf_event_list = LIST_HEAD_INIT(tsk.perf_event_list),
+# define INIT_PERF_EVENTS(tsk)						\
+	.perf_event_mutex = 						\
+		 __MUTEX_INITIALIZER(tsk.perf_event_mutex),		\
+	.perf_event_list = LIST_HEAD_INIT(tsk.perf_event_list),
 #else
 # define INIT_PERF_EVENTS(tsk)
 #endif
@@ -222,6 +231,7 @@ __MUTEX_INITIALIZER(tsk.perf_event_mutex),		\
 	},								\
 	.tasks		= LIST_HEAD_INIT(tsk.tasks),			\
 	INIT_PUSHABLE_TASKS(tsk)					\
+	INIT_CGROUP_SCHED(tsk)						\
 	.ptraced	= LIST_HEAD_INIT(tsk.ptraced),			\
 	.ptrace_entry	= LIST_HEAD_INIT(tsk.ptrace_entry),		\
 	.real_parent	= &tsk,						\
