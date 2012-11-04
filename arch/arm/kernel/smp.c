@@ -459,7 +459,9 @@ asmlinkage void __exception_irq_entry do_local_timer(struct pt_regs *regs)
 
 	if (local_timer_ack()) {
 		__inc_irq_stat(cpu, local_timer_irqs);
+		irq_enter();
 		ipi_timer();
+		irq_exit();
 	}
 
 	set_irq_regs(old_regs);
@@ -621,10 +623,10 @@ asmlinkage void __exception_irq_entry do_IPI(int ipinr, struct pt_regs *regs)
 
 	switch (ipinr) {
 	case IPI_TIMER:
-        irq_enter();
+		irq_enter();
 		ipi_timer();
-        irq_exit();
-        break;
+		irq_exit();
+		break;
 
 	case IPI_RESCHEDULE:
 		scheduler_ipi();
