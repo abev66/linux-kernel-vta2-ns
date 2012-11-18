@@ -515,9 +515,9 @@ static unsigned int uksm_sleep_real;
 static unsigned int uksm_sleep_saved;
 
 /* Max percentage of cpu utilization ksmd can take to scan in one batch */
-static unsigned int uksm_max_cpu_percentage = 20;
+static unsigned int uksm_max_cpu_percentage;
 
-static int uksm_cpu_governor = 2;
+static int uksm_cpu_governor;
 
 static char *uksm_cpu_governor_str[4] = { "full", "medium", "low", "quiet" };
 
@@ -543,16 +543,13 @@ static unsigned long uksm_ema_page_time = UKSM_PAGE_TIME_DEFAULT;
 /* The expotional moving average alpha weight, in percentage. */
 #define EMA_ALPHA	20
 
-/* The default value for sleep_millisecs */
-#define UKSM_SLEEP_MILLISECS_DEFAULT	500
-
 /*
  * The threshold used to filter out thrashing areas,
  * If it == 0, filtering is disabled, otherwise it's the percentage up-bound
  * of the thrashing ratio of all areas. Any area with a bigger thrashing ratio
  * will be considered as having a zero duplication ratio.
  */
-static unsigned int uksm_thrash_threshold = 25;
+static unsigned int uksm_thrash_threshold = 50;
 
 /* How much dedup ratio is considered to be abundant*/
 static unsigned int uksm_abundant_threshold = 10;
@@ -5538,7 +5535,7 @@ static int __init uksm_init(void)
 	struct task_struct *uksm_thread;
 	int err;
 
-	uksm_sleep_jiffies = msecs_to_jiffies( UKSM_SLEEP_MILLISECS_DEFAULT );
+	uksm_sleep_jiffies = msecs_to_jiffies(100);
 	uksm_sleep_saved = uksm_sleep_jiffies;
 
 	slot_tree_init();
