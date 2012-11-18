@@ -32,9 +32,9 @@ static struct clk *dmc1_clk;
 static struct cpufreq_freqs freqs;
 static DEFINE_MUTEX(set_freq_lock);
 
-/* APLL M,P,S values for 1.24G/1.2G/1G/800Mhz */
-#define APLL_VAL_1200   ((1 << 31) | (312 << 16) | (6 << 8) | 1)
-#define APLL_VAL_1200   ((1 << 31) | (300 << 16) | (6 << 8) | 1)
+/* APLL M,P,S values for 1.26G/1.2G/1G/800Mhz */
+#define APLL_VAL_1260   ((1 << 31) | (315 << 16) | (6 << 8) | 1)
+#define APLL_VAL_1200   ((1 << 31) | (150 << 16) | (3 << 8) | 1)
 #define APLL_VAL_1000	((1 << 31) | (125 << 16) | (3 << 8) | 1)
 #define APLL_VAL_800	((1 << 31) | (100 << 16) | (3 << 8) | 1)
 
@@ -79,7 +79,7 @@ enum s5pv210_dmc_port {
 };
 
 static struct cpufreq_frequency_table s5pv210_freq_table[] = {
-	{L0, 1200*1000},
+	{L0, 1260*1000},
 	{L1, 800*1000},
 	{L2, 400*1000},
 	{L3, 200*1000},
@@ -105,8 +105,8 @@ const unsigned long int_volt_max = 1250000;
 
 static struct s5pv210_dvs_conf dvs_conf[] = {
 	[L0] = {
-		.arm_volt   = 1325000,
-		.int_volt   = 1100000,
+		.arm_volt   = 1425000,
+		.int_volt   = 1125000,
 	},
 	[L1] = {
 		.arm_volt   = 1175000,
@@ -134,7 +134,7 @@ static u32 clkdiv_val[5][11] = {
 	 *   ONEDRAM, MFC, G3D }
 	 */
 
-	/* L0 : [1200/200/100][166/83][133/66][200/200] */
+	/* L0 : [1260/200/100][166/83][133/66][200/200] */
 	{0, 5, 5, 1, 3, 1, 4, 1, 3, 0, 0},
 
 	/* L1 : [800/200/100][166/83][133/66][200/200] */
@@ -206,6 +206,7 @@ static int s5pv210_target(struct cpufreq_policy *policy,
 	unsigned int index;
 	unsigned int pll_changing = 0;
 	unsigned int bus_speed_changing = 0;
+    unsigned int bus_speed_overclock = 0;
 	unsigned int arm_volt, int_volt;
 	int ret = 0;
 
@@ -266,6 +267,9 @@ static int s5pv210_target(struct cpufreq_policy *policy,
 	/* Check if there need to change System bus clock */
 	if ((index == L4) || (freqs.old == s5pv210_freq_table[L4].frequency))
 		bus_speed_changing = 1;
+
+    if ((index == L0) || (freqs.old == s5pv210_freq_table[L0].frequency))
+        bus_speed_overclock = 1;
 
 	if (bus_speed_changing) {
 		/*
@@ -380,7 +384,7 @@ static int s5pv210_target(struct cpufreq_policy *policy,
 		 * 6-2. Wait untile the PLL is locked
 		 */
 		if (index == L0)
-			__raw_writel(APLL_VAL_1200, S5P_APLL_CON);
+			__raw_writel(APLL_VAL_1260, S5P_APLL_CON);
 		else
 			__raw_writel(APLL_VAL_800, S5P_APLL_CON);
 
@@ -431,17 +435,22 @@ static int s5pv210_target(struct cpufreq_policy *policy,
 		/*
 		 * 10. DMC1 refresh counter
 		 * L4 : DMC1 = 100Mhz 7.8us/(1/100) = 0x30c
+         * L0 : DMC1 = 205MHz
 		 * Others : DMC1 = 200Mhz 7.8us/(1/200) = 0x618
 		 */
-		if (!bus_speed_changing)
-			s5pv210_set_refresh(DMC1, 200000);
+		if (!bus_speed_changing) {
+          if(bus_speed_overclock)
+			s5pv210_set_refresh(DMC1, 205000);
+          else
+            s5pv210_set_refresh(DMC1, 200000);
+        }
 	}
 
 	/*
-	 * L4 level need to change memory bus speed, hence onedram clock divier
+	 * L4 and L0 level need to change memory bus speed, hence onedram clock divier
 	 * and memory refresh parameter should be changed
 	 */
-	if (bus_speed_changing) {
+	if (bus_speed_changing || bus_speed_overclock) {
 		reg = __raw_readl(S5P_CLK_DIV6);
 		reg &= ~S5P_CLKDIV6_ONEDRAM_MASK;
 		reg |= (clkdiv_val[index][8] << S5P_CLKDIV6_ONEDRAM_SHIFT);
@@ -452,7 +461,14 @@ static int s5pv210_target(struct cpufreq_policy *policy,
 		} while (reg & (1 << 15));
 
 		/* Reconfigure DRAM refresh counter value */
-		if (index != L4) {
+		if (index == L0) {
+            /* 
+             * DMC0 : 166MHz
+             * DMC1 : 205MHz
+             */
+             s5pv210_set_refresh(DMC0, 166000);
+             s5pv210_set_refresh(DMC1, 205000);
+        }  else if (index != L4) {
 			/*
 			 * DMC0 : 166Mhz
 			 * DMC1 : 200Mhz
