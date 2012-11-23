@@ -435,12 +435,12 @@ static int s5pv210_target(struct cpufreq_policy *policy,
 		/*
 		 * 10. DMC1 refresh counter
 		 * L4 : DMC1 = 100Mhz 7.8us/(1/100) = 0x30c
-         * L0 : DMC1 = 204MHz
+         * L0 : DMC1 = 208MHz
 		 * Others : DMC1 = 200Mhz 7.8us/(1/200) = 0x618
 		 */
 		if (!bus_speed_changing) {
           if(bus_speed_overclock)
-			s5pv210_set_refresh(DMC1, 204000);
+			s5pv210_set_refresh(DMC1, 208000);
           else
             s5pv210_set_refresh(DMC1, 200000);
         }
@@ -464,10 +464,10 @@ static int s5pv210_target(struct cpufreq_policy *policy,
 		if (index == L0) {
             /* 
              * DMC0 : 166MHz
-             * DMC1 : 204MHz
+             * DMC1 : 208MHz
              */
              s5pv210_set_refresh(DMC0, 166000);
-             s5pv210_set_refresh(DMC1, 204000);
+             s5pv210_set_refresh(DMC1, 208000);
         }  else if (index != L4) {
 			/*
 			 * DMC0 : 166Mhz
