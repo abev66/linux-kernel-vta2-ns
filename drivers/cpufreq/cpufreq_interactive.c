@@ -52,11 +52,6 @@ struct cpufreq_interactive_cpuinfo {
 	u64 hispeed_validate_time;
 	struct rw_semaphore enable_sem;
 	int governor_enabled;
-	unsigned int *load_history;
-	unsigned int total_avg_load;
-	unsigned int total_load_history;
-	unsigned int low_power_rate_history;
-	unsigned int cpu_tune_value;
 };
 
 static DEFINE_PER_CPU(struct cpufreq_interactive_cpuinfo, cpuinfo);
@@ -66,31 +61,6 @@ static struct task_struct *speedchange_task;
 static cpumask_t speedchange_cpumask;
 static spinlock_t speedchange_cpumask_lock;
 static struct mutex gov_lock;
-
-static struct workqueue_struct *tune_wq;
-static struct work_struct tune_work;
-static cpumask_t tune_cpumask;
-static spinlock_t tune_cpumask_lock;
-
-static unsigned int sampling_periods;
-static unsigned int history_load_index;
-static unsigned int low_power_threshold;
-static unsigned int hi_perf_threshold;
-static unsigned int low_power_rate;
-static enum tune_values {
-	LOW_POWER_TUNE = 0,
-	DEFAULT_TUNE,
-	HIGH_PERF_TUNE
-} cur_tune_value;
-
-#define MIN_GO_HISPEED_LOAD 70
-#define DEFAULT_LOW_POWER_RATE 10
-
-/* default number of sampling periods to average before hotplug-in decision */
-#define DEFAULT_SAMPLING_PERIODS 10
-#define DEFAULT_HI_PERF_THRESHOLD 80
-#define DEFAULT_LOW_POWER_THRESHOLD 35
-#define MAX_MIN_SAMPLE_TIME (80 * USEC_PER_MSEC)
 
 /* Hi speed to bump to from lo speed when load burst (default max) */
 static unsigned int hispeed_freq;
@@ -126,7 +96,7 @@ static unsigned long timer_rate = DEFAULT_TIMER_RATE;
 static unsigned long above_hispeed_delay_val = DEFAULT_ABOVE_HISPEED_DELAY;
 
 /* Non-zero means indefinite speed boost active */
-static int boost_val = 1;
+static int boost_val;
 /* Duration of a boot pulse in usecs */
 static int boostpulse_duration_val = DEFAULT_MIN_SAMPLE_TIME;
 /* End time of boost pulse in ktime converted to usecs */
@@ -421,63 +391,6 @@ rearm:
 exit:
 	up_read(&pcpu->enable_sem);
 	return;
-}
-
-static void cpufreq_interactive_tune(struct work_struct *work)
-{
-	unsigned int cpu;
-	cpumask_t tmp_mask;
-	unsigned long flags;
-	struct cpufreq_interactive_cpuinfo *pcpu;
-
-	unsigned int max_total_avg_load = 0;
-	unsigned int index;
-
-	spin_lock_irqsave(&tune_cpumask_lock, flags);
-	tmp_mask = tune_cpumask;
-	cpumask_clear(&tune_cpumask);
-	spin_unlock_irqrestore(&tune_cpumask_lock, flags);
-
-	for_each_cpu(cpu, &tmp_mask) {
-		unsigned int j;
-
-		pcpu = &per_cpu(cpuinfo, cpu);
-		smp_rmb();
-
-		if (!pcpu->governor_enabled)
-			continue;
-
-		mutex_lock(&set_speed_lock);
-
-		for_each_cpu(j, pcpu->policy->cpus) {
-			struct cpufreq_interactive_cpuinfo *pjcpu =
-					&per_cpu(cpuinfo, j);
-
-			if (pjcpu->total_avg_load > max_total_avg_load)
-				max_total_avg_load = pjcpu->total_avg_load;
-		}
-
-		if ((max_total_avg_load > hi_perf_threshold)
-				&& (cur_tune_value != HIGH_PERF_TUNE)) {
-				cur_tune_value = HIGH_PERF_TUNE;
-				go_hispeed_load = MIN_GO_HISPEED_LOAD;
-				min_sample_time = MAX_MIN_SAMPLE_TIME;
-				hispeed_freq = pcpu->policy->max;
-		} else if ((max_total_avg_load < low_power_threshold)
-				&& (cur_tune_value != LOW_POWER_TUNE)) {
-			/* Boost down the performance */
-				go_hispeed_load = DEFAULT_GO_HISPEED_LOAD;
-				min_sample_time = DEFAULT_MIN_SAMPLE_TIME;
-				cpufreq_frequency_table_target(pcpu->policy,
-					pcpu->freq_table, pcpu->policy->min,
-					CPUFREQ_RELATION_H, &index);
-				hispeed_freq =
-					pcpu->freq_table[index+1].frequency;
-				cur_tune_value = LOW_POWER_TUNE;
-		}
-		mutex_unlock(&set_speed_lock);
-	}
-
 }
 
 static void cpufreq_interactive_idle_start(void)
@@ -992,7 +905,7 @@ static int cpufreq_governor_interactive(struct cpufreq_policy *policy,
 		unsigned int event)
 {
 	int rc;
-	unsigned int j, i;
+	unsigned int j;
 	struct cpufreq_interactive_cpuinfo *pcpu;
 	struct cpufreq_frequency_table *freq_table;
 
@@ -1100,12 +1013,7 @@ static int __init cpufreq_interactive_init(void)
 {
 	unsigned int i;
 	struct cpufreq_interactive_cpuinfo *pcpu;
-	/*
-	 * If MAX_USER_RT_PRIO < MAX_RT_PRIO the kernel thread has higher priority than any user thread
-	 * In this case MAX_USER_RT_PRIO = 99 and MAX_RT_PRIO = 100, therefore boosting the priority of this
-	 * kernel thread above user threads which will, by my reason, increase interactvitiy.
-	 */ 
-	struct sched_param param = { .sched_priority = MAX_USER_RT_PRIO-1 };
+	struct sched_param param = { .sched_priority = MAX_RT_PRIO-1 };
 
 	/* Initalize per-cpu timers */
 	for_each_possible_cpu(i) {
