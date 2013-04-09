@@ -531,7 +531,11 @@ static void dhd_set_packet_filter(int value, dhd_pub_t *dhd)
 static int dhd_set_suspend(int value, dhd_pub_t *dhd)
 {
 #if !defined(SUPPORT_PM2_ONLY)
+#ifdef CONFIG_BCMDHD_PMFAST
+	int power_mode = PM_FAST;
+#else
 	int power_mode = PM_MAX;
+#endif
 #endif
 	/* wl_pkt_filter_enable_t	enable_parm; */
 	char iovbuf[32];

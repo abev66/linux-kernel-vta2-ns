@@ -52,3 +52,11 @@ config DHD_ENABLE_P2P
 	default n
 	---help---
 	  Use Enable Wifi Direct
+
+config BCMDHD_PMFAST
+    depends on BCMDHD
+    bool "Low Power mode PM_FAST"
+    default n
+    ---help---
+      Use low power mode PM_FAST instead of PM_MAX.
+      A bit more power consumption but increase connection speed.
