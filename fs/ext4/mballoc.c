@@ -4615,7 +4615,7 @@ do_more:
     
 	if (sbi->s_log_groups_per_flex) {
 		ext4_group_t flex_group = ext4_flex_group(sbi, block_group);
-		atomic_add(count, &sbi->s_flex_groups[flex_group].free_blocks);
+		atomic64_add(count, &sbi->s_flex_groups[flex_group].free_blocks);
 	}
     
 	ext4_mb_unload_buddy(&e4b);
