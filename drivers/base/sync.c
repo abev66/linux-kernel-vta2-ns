@@ -16,6 +16,7 @@
 
 #include <linux/debugfs.h>
 #include <linux/export.h>
+#include <linux/module.h>
 #include <linux/file.h>
 #include <linux/fs.h>
 #include <linux/kernel.h>
@@ -324,7 +325,6 @@ static int sync_fence_copy_pts(struct sync_fence *dst, struct sync_fence *src)
 
 		new_pt->fence = dst;
 		list_add(&new_pt->pt_list, &dst->pt_list_head);
-		sync_pt_activate(new_pt);
 	}
 
 	return 0;
@@ -453,6 +453,7 @@ struct sync_fence *sync_fence_merge(const char *name,
 				    struct sync_fence *a, struct sync_fence *b)
 {
 	struct sync_fence *fence;
+	struct list_head *pos;
 	int err;
 
 	fence = sync_fence_alloc(name);
@@ -467,110 +468,126 @@ struct sync_fence *sync_fence_merge(const char *name,
 	if (err < 0)
 		goto err;
 
-	/*
-	 * signal the fence in case one of it's pts were activated before
-	 * they were activated
-	 */
-	sync_fence_signal_pt(list_first_entry(&fence->pt_list_head,
-					      struct sync_pt,
-					      pt_list));
-
-	return fence;
-err:
-	sync_fence_free_pts(fence);
-	kfree(fence);
-	return NULL;
-}
-EXPORT_SYMBOL(sync_fence_merge);
-
-static void sync_fence_signal_pt(struct sync_pt *pt)
-{
-	LIST_HEAD(signaled_waiters);
-	struct sync_fence *fence = pt->fence;
-	struct list_head *pos;
-	struct list_head *n;
-	unsigned long flags;
-	int status;
-
-	status = sync_fence_get_status(fence);
-
-	spin_lock_irqsave(&fence->waiter_list_lock, flags);
-	/*
-	 * this should protect against two threads racing on the signaled
-	 * false -> true transition
-	 */
-	if (status && !fence->status) {
-		list_for_each_safe(pos, n, &fence->waiter_list_head)
-			list_move(pos, &signaled_waiters);
-
-		fence->status = status;
-	} else {
-		status = 0;
-	}
-	spin_unlock_irqrestore(&fence->waiter_list_lock, flags);
-
-	if (status) {
-		list_for_each_safe(pos, n, &signaled_waiters) {
-			struct sync_fence_waiter *waiter =
-				container_of(pos, struct sync_fence_waiter,
-					     waiter_list);
-
-			list_del(pos);
-			waiter->callback(fence, waiter);
-		}
-		wake_up(&fence->wq);
-	}
-}
-
-int sync_fence_wait_async(struct sync_fence *fence,
-			  struct sync_fence_waiter *waiter)
-{
-	unsigned long flags;
-	int err = 0;
-
-	spin_lock_irqsave(&fence->waiter_list_lock, flags);
-
-	if (fence->status) {
-		err = fence->status;
-		goto out;
+	list_for_each(pos, &fence->pt_list_head) {
+		struct sync_pt *pt =
+			container_of(pos, struct sync_pt, pt_list);
+		sync_pt_activate(pt);
 	}
 
-	list_add_tail(&waiter->waiter_list, &fence->waiter_list_head);
-out:
-	spin_unlock_irqrestore(&fence->waiter_list_lock, flags);
+      /*
+       * signal the fence in case one of it's pts were activated before
+       * they were activated
+       */
+      sync_fence_signal_pt(list_first_entry(&fence->pt_list_head,
+                            struct sync_pt,
+                            pt_list));
 
-	return err;
-}
-EXPORT_SYMBOL(sync_fence_wait_async);
+      return fence;
+  err:
+      sync_fence_free_pts(fence);
+      kfree(fence);
+      return NULL;
+  }
+  EXPORT_SYMBOL(sync_fence_merge);
 
-int sync_fence_cancel_async(struct sync_fence *fence,
-			     struct sync_fence_waiter *waiter)
-{
-	struct list_head *pos;
-	struct list_head *n;
-	unsigned long flags;
-	int ret = -ENOENT;
+  static void sync_fence_signal_pt(struct sync_pt *pt)
+  {
+      LIST_HEAD(signaled_waiters);
+      struct sync_fence *fence = pt->fence;
+      struct list_head *pos;
+      struct list_head *n;
+      unsigned long flags;
+      int status;
 
-	spin_lock_irqsave(&fence->waiter_list_lock, flags);
-	/*
-	 * Make sure waiter is still in waiter_list because it is possible for
-	 * the waiter to be removed from the list while the callback is still
-	 * pending.
-	 */
-	list_for_each_safe(pos, n, &fence->waiter_list_head) {
-		struct sync_fence_waiter *list_waiter =
-			container_of(pos, struct sync_fence_waiter,
-				     waiter_list);
-		if (list_waiter == waiter) {
-			list_del(pos);
-			ret = 0;
-			break;
-		}
-	}
-	spin_unlock_irqrestore(&fence->waiter_list_lock, flags);
-	return ret;
-}
-EXPORT_SYMBOL(sync_fence_cancel_async);
+      status = sync_fence_get_status(fence);
+
+      spin_lock_irqsave(&fence->waiter_list_lock, flags);
+      /*
+       * this should protect against two threads racing on the signaled
+       * false -> true transition
+       */
+      if (status && !fence->status) {
+          list_for_each_safe(pos, n, &fence->waiter_list_head)
+              list_move(pos, &signaled_waiters);
+
+          fence->status = status;
+      } else {
+          status = 0;
+      }
+      spin_unlock_irqrestore(&fence->waiter_list_lock, flags);
+
+      if (status) {
+          list_for_each_safe(pos, n, &signaled_waiters) {
+              struct sync_fence_waiter *waiter =
+                  container_of(pos, struct sync_fence_waiter,
+                           waiter_list);
+
+              list_del(pos);
+              waiter->callback(fence, waiter);
+          }
+          wake_up(&fence->wq);
+      }
+  }
+
+  int sync_fence_wait_async(struct sync_fence *fence,
+                struct sync_fence_waiter *waiter)
+  {
+      unsigned long flags;
+      int err = 0;
+
+      spin_lock_irqsave(&fence->waiter_list_lock, flags);
+
+      if (fence->status) {
+          err = fence->status;
+          goto out;
+      }
+
+      list_add_tail(&waiter->waiter_list, &fence->waiter_list_head);
+  out:
+      spin_unlock_irqrestore(&fence->waiter_list_lock, flags);
+
+      return err;
+  }
+  EXPORT_SYMBOL(sync_fence_wait_async);
+
+  int sync_fence_cancel_async(struct sync_fence *fence,
+                   struct sync_fence_waiter *waiter)
+  {
+      struct list_head *pos;
+      struct list_head *n;
+      unsigned long flags;
+      int ret = -ENOENT;
+
+      spin_lock_irqsave(&fence->waiter_list_lock, flags);
+      /*
+       * Make sure waiter is still in waiter_list because it is possible for
+       * the waiter to be removed from the list while the callback is still
+       * pending.
+       */
+      list_for_each_safe(pos, n, &fence->waiter_list_head) {
+          struct sync_fence_waiter *list_waiter =
+              container_of(pos, struct sync_fence_waiter,
+                       waiter_list);
+          if (list_waiter == waiter) {
+              list_del(pos);
+              ret = 0;
+              break;
+          }
+      }
+      spin_unlock_irqrestore(&fence->waiter_list_lock, flags);
+      return ret;
+  }
+  EXPORT_SYMBOL(sync_fence_cancel_async);
+
+  static bool sync_fence_check(struct sync_fence *fence)
+  {
+      /*
+       * Make sure that reads to fence->status are ordered with the
+       * wait queue event triggering
+       */
+      smp_rmb();
+      return fence->status != 0;
+  }
 
 int sync_fence_wait(struct sync_fence *fence, long timeout)
 {
@@ -586,25 +603,27 @@ int sync_fence_wait(struct sync_fence *fence, long timeout)
 		err = wait_event_interruptible_timeout(fence->wq,
 						       sync_fence_check(fence),
 						       timeout);
-	} else if (timeout < 0){
-		err = wait_event_interruptible(fence->wq,
-					       sync_fence_check(fence));
-	}
-	trace_sync_wait(fence, 0);
+	} else if (timeout < 0) {
+          err = wait_event_interruptible(fence->wq,
+                             sync_fence_check(fence));
+      }
+      trace_sync_wait(fence, 0);
 
-	if (err < 0)
-		return err;
+      if (err < 0)
+          return err;
 
-	if (fence->status < 0) {
-		pr_info("fence error %d on [%p]\n", fence->status, fence);
-		sync_dump();
-		return fence->status;
-	}
+      if (fence->status < 0) {
+          pr_info("fence error %d on [%p]\n", fence->status, fence);
+          sync_dump();
+          return fence->status;
+      }
 
-	if (fence->status == 0) {
-		pr_info("fence timeout on [%p] after %dms\n", fence,
-			jiffies_to_msecs(timeout));
-		sync_dump();
+      if (fence->status == 0) {
+          if (timeout > 0) {
+              pr_info("fence timeout on [%p] after %dms\n", fence,
+                  jiffies_to_msecs(timeout));
+              sync_dump();
+          }
 		return -ETIME;
 	}
 
